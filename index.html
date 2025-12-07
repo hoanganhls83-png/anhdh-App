@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Vòng Quay May Mắn - Tết 2025</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&family=Dancing+Script:wght@700&display=swap" rel="stylesheet">
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel Standalone (to compile JSX/TS in browser) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+      body {
+        font-family: 'Montserrat', sans-serif;
+        overscroll-behavior: none;
+      }
+      .font-handwriting {
+        font-family: 'Dancing Script', cursive;
+      }
+      .wheel-container {
+        filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.6));
+      }
+      @keyframes pop {
+        0% { transform: scale(0); opacity: 0; }
+        50% { transform: scale(1.1); opacity: 1; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      .animate-pop {
+        animation: pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+      }
+      .animate-fade-in {
+        animation: fadeIn 0.3s ease-out forwards;
+      }
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      
+      /* Tet Background Pattern */
+      .tet-bg-pattern {
+        background-color: #8B0000;
+        background-image: radial-gradient(#FFD700 1.5px, transparent 1.5px);
+        background-size: 30px 30px;
+        opacity: 0.15;
+      }
+
+      /* Falling Petals Animation */
+      @keyframes fall {
+        0% { transform: translateY(-10vh) translateX(0) rotate(0deg); opacity: 1; }
+        100% { transform: translateY(100vh) translateX(20px) rotate(360deg); opacity: 0; }
+      }
+      .petal {
+        position: absolute;
+        top: -10%;
+        width: 15px;
+        height: 15px;
+        background: #FFD700;
+        border-radius: 100% 0 100% 0;
+        opacity: 0.8;
+        animation: fall linear infinite;
+      }
+      .petal:nth-child(2n) { background: #FFA500; width: 12px; height: 12px; }
+      .petal:nth-child(3n) { background: #FFFACD; width: 10px; height: 10px; }
+      
+      /* Button Shimmer */
+      @keyframes shimmer {
+        0% { transform: skewX(-12deg) translateX(-150%); }
+        100% { transform: skewX(-12deg) translateX(150%); }
+      }
+    </style>
+</head>
+<body class="bg-gradient-to-b from-red-900 via-red-700 to-red-900 min-h-screen flex flex-col items-center justify-center overflow-x-hidden text-gray-800 relative">
+    <div class="fixed inset-0 tet-bg-pattern pointer-events-none z-0"></div>
+    <div id="root" class="w-full max-w-md mx-auto flex flex-col items-center justify-center min-h-[100dvh] relative z-10"></div>
+
+    <!-- MAIN APP SCRIPT -->
+    <script type="text/babel" data-presets="typescript,react">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        // --- CẤU HÌNH TRẠNG THÁI GAME ---
+        // Đổi thành false để DỪNG GAME (Hiện thông báo kết thúc)
+        const CAMPAIGN_ACTIVE = true; 
+        
+        // --- CONSTANTS ---
+        // Thay link App Script của bạn vào đây
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxriy8TjhqAuJKecOWjFb-M31WTsS3VsUb3vuNZq-NFreUVRNm98k10yByq6BnMI92p/exec'; 
+        
+        const MAX_SPINS = 3;
+        const WHEEL_SIZE = 340;
+        const SPIN_DURATION_SEC = 5;
+
+        const PRIZES = [
+            { id: 1, label: 'THẺ CÀO 50K', color: '#FF0000', textColor: '#FFD700' },
+            { id: 2, label: 'VẠN SỰ NHƯ Ý', color: '#FFFFFF', textColor: '#D32F2F' },
+            { id: 3, label: 'THẺ CÀO 20K', color: '#FFEB3B', textColor: '#D32F2F' },
+            { id: 4, label: 'CHÚC MAY MẮN', color: '#FFFFFF', textColor: '#D32F2F' },
+            { id: 5, label: 'THẺ CÀO 10K', color: '#FF0000', textColor: '#FFFFFF' },
+            { id: 6, label: 'AN KHANG', color: '#FFFFFF', textColor: '#D32F2F' },
+            { id: 7, label: 'THỊNH VƯỢNG', color: '#333333', textColor: '#FFFFFF' },
+            { id: 8, label: 'TẤN TÀI TẤN LỘC', color: '#FFFFFF', textColor: '#D32F2F' },
+        ];
+
+        // --- SERVICES ---
+        
+        // Audio Service
+        let audioCtx = null;
+        const checkAudioContext = () => {
+            if (!audioCtx) {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (AudioContextClass) {
+                    audioCtx = new AudioContextClass();
+                }
+            }
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        };
+
+        const playTickSound = () => {
+            if (!audioCtx) return;
+            try {
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                oscillator.type = 'triangle';
+                oscillator.frequency.setValueAtTime(600, audioCtx.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.05);
+                gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.06);
+            } catch (e) { console.error(e); }
+        };
+
+        const playWinSound = () => {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            const createNote = (freq, startTime, duration, type = 'sine') => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0.1, startTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(startTime);
+                osc.stop(startTime + duration);
+            };
+            createNote(523.25, now, 0.4, 'triangle');
+            createNote(659.25, now + 0.15, 0.4, 'triangle');
+            createNote(783.99, now + 0.3, 0.4, 'triangle');
+            createNote(1046.50, now + 0.45, 0.8, 'square');
+        };
+
+        // Sheet Service
+        const submitToGoogleSheet = async (user, prize) => {
+            if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes('PLACEHOLDER')) {
+                console.warn("Chưa cấu hình Google Sheet");
+                return;
+            }
+            const formData = new FormData();
+            formData.append('name', user.name);
+            formData.append('phone', user.phone);
+            formData.append('village', user.village);
+            formData.append('commune', user.commune);
+            formData.append('prize', prize.label);
+            try {
+                await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    body: formData,
+                    mode: 'no-cors'
+                });
+                console.log("Đã gửi dữ liệu");
+            } catch (error) {
+                console.error("Lỗi gửi dữ liệu:", error);
+            }
+        };
+
+        // --- COMPONENTS ---
+
+        const WheelComponent = ({ prizes, rotation, transitionDuration }) => {
+            const radius = WHEEL_SIZE / 2;
+            const numSegments = prizes.length;
+            const anglePerSegment = 360 / numSegments;
+            
+            const slicePath = useMemo(() => {
+                const startAngle = 0;
+                const endAngle = anglePerSegment;
+                const toRad = (deg) => deg * Math.PI / 180;
+                const x1 = radius + radius * Math.cos(toRad(startAngle));
+                const y1 = radius + radius * Math.sin(toRad(startAngle));
+                const x2 = radius + radius * Math.cos(toRad(endAngle));
+                const y2 = radius + radius * Math.sin(toRad(endAngle));
+                return `M${radius},${radius} L${x1},${y1} A${radius},${radius} 0 0,1 ${x2},${y2} Z`;
+            }, [radius, anglePerSegment]);
+
+            return (
+                <div className="relative wheel-container mb-10 mt-4">
+                    <div className="absolute -top-5 left-1/2 -translate-x-1/2 z-30 filter drop-shadow-lg">
+                        <svg width="60" height="60" viewBox="0 0 60 60" fill="none">
+                           <path d="M30 60L10 20H50L30 60Z" fill="#DC2626" stroke="#FFD700" strokeWidth="3"/>
+                           <circle cx="30" cy="20" r="8" fill="#FFD700"/>
+                        </svg>
+                    </div>
+                    <div className="relative rounded-full border-[12px] border-yellow-500 shadow-[0_0_30px_rgba(255,215,0,0.4)] bg-red-900 box-content" style={{ width: WHEEL_SIZE, height: WHEEL_SIZE }}>
+                        <div className="absolute inset-0 rounded-full border-2 border-dashed border-yellow-700 opacity-50 pointer-events-none"></div>
+                        <div className="w-full h-full rounded-full overflow-hidden" style={{ transform: `rotate(${rotation - 90}deg)`, transition: `transform ${transitionDuration}s cubic-bezier(0.25, 0.1, 0.25, 1)` }}>
+                            <svg viewBox={`0 0 ${WHEEL_SIZE} ${WHEEL_SIZE}`} width={WHEEL_SIZE} height={WHEEL_SIZE} className="block">
+                                {prizes.map((prize, index) => (
+                                    <g key={prize.id} transform={`rotate(${index * anglePerSegment}, ${radius}, ${radius})`}>
+                                        <path d={slicePath} fill={prize.color} stroke="#B45309" strokeWidth="1" />
+                                        <g transform={`translate(${radius}, ${radius}) rotate(${anglePerSegment / 2}) translate(${radius * 0.65}, 0) rotate(90)`}>
+                                           <text x="0" y="0" fill={prize.textColor} textAnchor="middle" dominantBaseline="middle" className="font-bold uppercase tracking-wider" style={{ fontSize: '13px', textShadow: '0px 1px 1px rgba(0,0,0,0.2)' }}>
+                                              {prize.label.split(' ').length > 2 ? (
+                                                <>
+                                                  <tspan x="0" dy="-0.6em">{prize.label.split(' ').slice(0, Math.ceil(prize.label.split(' ').length/2)).join(' ')}</tspan>
+                                                  <tspan x="0" dy="1.2em">{prize.label.split(' ').slice(Math.ceil(prize.label.split(' ').length/2)).join(' ')}</tspan>
+                                                </>
+                                              ) : prize.label}
+                                            </text>
+                                        </g>
+                                    </g>
+                                ))}
+                            </svg>
+                        </div>
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-gradient-to-br from-yellow-300 via-yellow-500 to-yellow-700 rounded-full shadow-lg flex items-center justify-center border-4 border-yellow-100 z-10">
+                            <div className="w-10 h-10 border-2 border-yellow-800 rounded-full flex items-center justify-center opacity-60">
+                               <span className="text-yellow-900 font-black text-[10px]">TẾT</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const LeadForm = ({ onSubmit, onCancel }) => {
+            const [name, setName] = useState('');
+            const [phone, setPhone] = useState('');
+            const [village, setVillage] = useState('');
+            const [commune, setCommune] = useState('');
+            const [error, setError] = useState('');
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (!name.trim() || !village.trim() || !commune.trim()) {
+                    setError('Vui lòng điền đầy đủ thông tin.');
+                    return;
+                }
+                const phoneRegex = /(84|0[3|5|7|8|9])+([0-9]{8})\b/;
+                if (!phoneRegex.test(phone)) {
+                    setError('Số điện thoại không hợp lệ (VN).');
+                    return;
+                }
+                try {
+                    const history = JSON.parse(localStorage.getItem('lucky_wheel_history') || '{}');
+                    const userHistory = history[phone];
+                    if (userHistory && userHistory.spins >= MAX_SPINS) {
+                        setError('Bạn đã hết lượt chơi!');
+                        return;
+                    }
+                } catch (e) {}
+                onSubmit({ name, phone, village, commune });
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 animate-fade-in backdrop-blur-sm">
+                    <div className="bg-red-700 rounded-2xl w-full max-w-sm overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)] animate-pop border-4 border-yellow-500 relative max-h-[90vh] overflow-y-auto">
+                        <div className="pt-14 pb-4 px-6 relative z-0">
+                            <div className="text-center mb-4">
+                                <h2 className="text-yellow-300 font-bold text-xl uppercase">Thông tin nhận quà</h2>
+                                <p className="text-red-200 text-xs mt-1">Điền đầy đủ để nhận thưởng</p>
+                            </div>
+                            <form onSubmit={handleSubmit} className="space-y-3">
+                                <div><label className="text-yellow-100 text-sm">Họ và Tên</label><input type="text" value={name} onChange={(e)=>setName(e.target.value)} className="w-full bg-red-900/50 border border-yellow-600/50 rounded-lg p-2.5 text-white" /></div>
+                                <div><label className="text-yellow-100 text-sm">Số điện thoại</label><input type="tel" value={phone} onChange={(e)=>setPhone(e.target.value)} className="w-full bg-red-900/50 border border-yellow-600/50 rounded-lg p-2.5 text-white" /></div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div><label className="text-yellow-100 text-sm">Thôn/Xóm</label><input type="text" value={village} onChange={(e)=>setVillage(e.target.value)} className="w-full bg-red-900/50 border border-yellow-600/50 rounded-lg p-2.5 text-white" /></div>
+                                    <div><label className="text-yellow-100 text-sm">Xã/Phường</label><input type="text" value={commune} onChange={(e)=>setCommune(e.target.value)} className="w-full bg-red-900/50 border border-yellow-600/50 rounded-lg p-2.5 text-white" /></div>
+                                </div>
+                                {error && <p className="text-yellow-300 text-sm text-center bg-red-900/50 p-1 rounded">{error}</p>}
+                                <button type="submit" className="w-full bg-gradient-to-r from-yellow-400 to-yellow-600 text-red-900 font-black text-lg py-3 rounded-xl shadow-lg mt-2 uppercase">Quay Ngay</button>
+                                <button type="button" onClick={onCancel} className="w-full text-red-300 text-sm py-2">Bỏ qua</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const ResultModal = ({ prize, user, spinCount, maxSpins, onContinue, onFinish }) => {
+            const spinsLeft = maxSpins - spinCount;
+            const isFinished = spinsLeft <= 0;
+            return (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+                    <div className="bg-gradient-to-br from-red-600 to-red-900 rounded-2xl w-full max-w-sm p-1 shadow-2xl animate-pop border-4 border-yellow-400 relative">
+                        <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 text-center h-full flex flex-col items-center border border-white/10">
+                            <div className="text-5xl mb-3 mt-4">🌸</div>
+                            <h2 className="text-yellow-300 font-black text-2xl uppercase mb-1">Lượt quay {spinCount}/{maxSpins}</h2>
+                            <div className="text-white text-sm opacity-90 mb-6 bg-red-950/40 px-3 py-1 rounded-full border border-red-800/50">Người chơi: <span className="font-bold text-yellow-300">{user?.name}</span></div>
+                            <div className="bg-gradient-to-r from-yellow-100 to-white rounded-xl p-6 w-full mb-6 shadow-inner border-2 border-yellow-500/50">
+                                <p className="text-red-800 text-xs uppercase font-bold mb-1">Bạn nhận được</p>
+                                <p className="text-red-600 text-2xl font-black leading-tight">{prize.label}</p>
+                            </div>
+                            <div className="space-y-3 w-full">
+                                {!isFinished ? (
+                                    <button onClick={onContinue} className="block w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-red-900 font-bold py-3 rounded-xl shadow-lg">🔄 Quay tiếp (Còn {spinsLeft} lượt)</button>
+                                ) : (
+                                    <button onClick={onFinish} className="block w-full bg-gray-100 hover:bg-white text-red-900 font-bold py-3 rounded-xl shadow-lg">🏁 Kết thúc & Chơi lại</button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const Lantern = ({ className, delay = 0 }) => (
+            <div className={`absolute z-0 pointer-events-none animate-[bounce_3s_infinite] ${className}`} style={{ animationDelay: `${delay}s` }}>
+                <svg width="80" height="120" viewBox="0 0 80 120" fill="none"><line x1="40" y1="0" x2="40" y2="20" stroke="#FFD700" strokeWidth="2"/><rect x="15" y="20" width="50" height="60" rx="10" fill="#D32F2F" stroke="#FFD700" strokeWidth="2"/><path d="M15 30 H65" stroke="#B71C1C" strokeOpacity="0.5"/><path d="M15 70 H65" stroke="#B71C1C" strokeOpacity="0.5"/><rect x="25" y="15" width="30" height="5" fill="#3E2723"/><rect x="25" y="80" width="30" height="5" fill="#3E2723"/><path d="M40 85 L35 110" stroke="#FFD700" strokeWidth="2"/><path d="M40 85 L45 110" stroke="#FFD700" strokeWidth="2"/><path d="M40 85 L40 115" stroke="#FFD700" strokeWidth="2"/></svg>
+            </div>
+        );
+
+        const BlossomBranch = ({ className }) => (
+            <div className={`absolute pointer-events-none opacity-80 z-0 ${className}`}>
+                <svg width="150" height="150" viewBox="0 0 100 100" fill="none"><path d="M0 100 C 30 90, 50 50, 80 20" stroke="#5D4037" strokeWidth="3" fill="none"/><path d="M40 70 C 50 60, 60 80, 70 60" stroke="#5D4037" strokeWidth="2" fill="none"/><circle cx="80" cy="20" r="5" fill="#FFEB3B"/><circle cx="70" cy="60" r="4" fill="#FFEB3B"/><circle cx="40" cy="70" r="4" fill="#FFEB3B"/><circle cx="50" cy="50" r="6" fill="#FFA000"/></svg>
+            </div>
+        );
+
+        const FallingPetals = () => (
+            <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+                {[...Array(12)].map((_, i) => (
+                    <div key={i} className="petal" style={{ left: `${Math.random() * 100}%`, animationDuration: `${3 + Math.random() * 5}s`, animationDelay: `${Math.random() * 5}s` }} />
+                ))}
+            </div>
+        );
+
+        const App = () => {
+            const [showForm, setShowForm] = useState(false);
+            const [isSpinning, setIsSpinning] = useState(false);
+            const [rotation, setRotation] = useState(0);
+            const [userInfo, setUserInfo] = useState(null);
+            const [result, setResult] = useState(null);
+            const [spinCount, setSpinCount] = useState(0);
+            
+            const animationFrameRef = useRef(null);
+            const startTimeRef = useRef(0);
+            const startRotationRef = useRef(0);
+            const targetRotationRef = useRef(0);
+            const lastSegmentRef = useRef(-1);
+
+            const handleStartClick = () => {
+                if (!CAMPAIGN_ACTIVE) return;
+                checkAudioContext();
+                if (isSpinning) return;
+                if (userInfo) {
+                    if (spinCount < MAX_SPINS) startSpin(userInfo);
+                } else {
+                    setShowForm(true);
+                }
+            };
+
+            const handleFormSubmit = (info) => {
+                const history = JSON.parse(localStorage.getItem('lucky_wheel_history') || '{}');
+                const existingSession = history[info.phone];
+                setUserInfo(info);
+                setShowForm(false);
+                let currentSpins = 0;
+                if (existingSession) currentSpins = existingSession.spins;
+                setSpinCount(currentSpins);
+                if (currentSpins < MAX_SPINS) {
+                    setTimeout(() => startSpin(info), 300);
+                }
+            };
+
+            const startSpin = (currentUser) => {
+                if (isSpinning) return;
+                setIsSpinning(true);
+                setResult(null);
+                checkAudioContext();
+
+                const winnerIndex = Math.floor(Math.random() * PRIZES.length);
+                const winner = PRIZES[winnerIndex];
+                const segmentAngle = 360 / PRIZES.length;
+                const stopAngle = 360 - (winnerIndex * segmentAngle) - (segmentAngle / 2);
+                const extraSpins = 360 * (5 + Math.floor(Math.random() * 3));
+                const randomOffset = (Math.random() - 0.5) * (segmentAngle * 0.8);
+                const currentRotationMod = rotation % 360;
+                const totalRotation = rotation + (360 - currentRotationMod) + extraSpins + stopAngle + randomOffset;
+
+                setRotation(totalRotation);
+                startRotationRef.current = rotation;
+                targetRotationRef.current = totalRotation;
+                startTimeRef.current = Date.now();
+                lastSegmentRef.current = -1;
+
+                const animate = () => {
+                    const now = Date.now();
+                    const elapsed = now - startTimeRef.current;
+                    const duration = SPIN_DURATION_SEC * 1000;
+                    if (elapsed < duration) {
+                        const progress = elapsed / duration;
+                        const easeOutQuart = 1 - Math.pow(1 - progress, 4);
+                        const currentVirtualRotation = startRotationRef.current + (targetRotationRef.current - startRotationRef.current) * easeOutQuart;
+                        const effectiveAngle = currentVirtualRotation % 360;
+                        const currentSegment = Math.floor(effectiveAngle / segmentAngle);
+                        if (currentSegment !== lastSegmentRef.current) {
+                            playTickSound();
+                            lastSegmentRef.current = currentSegment;
+                        }
+                        animationFrameRef.current = requestAnimationFrame(animate);
+                    } else {
+                        finishSpin(winner, currentUser);
+                    }
+                };
+                animationFrameRef.current = requestAnimationFrame(animate);
+            };
+
+            const finishSpin = (winner, currentUser) => {
+                setIsSpinning(false);
+                setResult(winner);
+                setSpinCount(prev => {
+                    const newCount = prev + 1;
+                    if (currentUser) {
+                        try {
+                            const history = JSON.parse(localStorage.getItem('lucky_wheel_history') || '{}');
+                            history[currentUser.phone] = { spins: newCount, timestamp: new Date().toISOString() };
+                            localStorage.setItem('lucky_wheel_history', JSON.stringify(history));
+                        } catch(e) {}
+                        
+                        // Save to browser history for download
+                        try {
+                           const list = JSON.parse(localStorage.getItem('customer_list') || '[]');
+                           list.push({
+                               time: new Date().toLocaleString(),
+                               name: currentUser.name,
+                               phone: currentUser.phone,
+                               prize: winner.label
+                           });
+                           localStorage.setItem('customer_list', JSON.stringify(list));
+                        } catch (e) {}
+
+                        submitToGoogleSheet(currentUser, winner);
+                    }
+                    return newCount;
+                });
+                playWinSound();
+            };
+
+            const handleFinishSession = () => {
+                setResult(null); setUserInfo(null); setSpinCount(0); setRotation(rotation % 360);
+            };
+            
+            const downloadList = () => {
+                const list = JSON.parse(localStorage.getItem('customer_list') || '[]');
+                if(list.length === 0) { alert('Chưa có dữ liệu'); return; }
+                const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
+                    + "Thời gian,Họ Tên,Số Điện Thoại,Giải Thưởng\n"
+                    + list.map(e => `${e.time},${e.name},'${e.phone},${e.prize}`).join("\n");
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", "danh_sach_trung_thuong.csv");
+                document.body.appendChild(link);
+                link.click();
+            };
+
+            const spinsLeft = MAX_SPINS - spinCount;
+            const canSpin = userInfo ? spinsLeft > 0 : true;
+
+            return (
+                <div className="relative w-full min-h-[100dvh] flex flex-col items-center justify-center p-4 overflow-hidden">
+                    <FallingPetals />
+                    <Lantern className="-top-4 left-4 scale-75 md:scale-100" delay={0.5} />
+                    <Lantern className="-top-8 right-8 scale-90 md:scale-110" delay={0} />
+                    <BlossomBranch className="-bottom-8 left-0 rotate-12 scale-150" />
+                    <BlossomBranch className="-bottom-8 -right-4 -rotate-45 scale-125" />
+
+                    <div className="relative z-10 flex flex-col items-center w-full max-w-md">
+                        <div className="mb-2 text-center">
+                            <h2 className="font-handwriting text-3xl text-yellow-200 mb-[-10px] drop-shadow-md">Vui Xuân Đón Lộc</h2>
+                            <h1 className="text-5xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-yellow-600 drop-shadow-[0_4px_2px_rgba(0,0,0,0.5)] uppercase tracking-tighter" style={{ textShadow: '0 2px 0 #8B0000' }}>Vòng Quay</h1>
+                            <h1 className="text-4xl md:text-5xl font-black text-white drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)] uppercase tracking-widest mt-1">May Mắn</h1>
+                        </div>
+
+                        <WheelComponent prizes={PRIZES} rotation={rotation} transitionDuration={SPIN_DURATION_SEC} />
+
+                        {CAMPAIGN_ACTIVE ? (
+                            <button onClick={handleStartClick} disabled={isSpinning || !canSpin} className={`relative px-12 py-4 rounded-full text-2xl font-black uppercase tracking-widest transition-all ${(isSpinning || !canSpin) ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-gradient-to-b from-yellow-400 via-yellow-500 to-yellow-600 text-red-900 border-b-4 border-yellow-800 shadow-[0_10px_20px_rgba(255,215,0,0.4)] hover:-translate-y-1'}`}>
+                                {isSpinning ? 'Đang quay...' : userInfo ? `Quay (${spinsLeft} lượt)` : 'Quay Ngay'}
+                            </button>
+                        ) : (
+                            <div className="relative px-8 py-4 rounded-2xl bg-gray-800/80 text-white text-center border-2 border-yellow-600 shadow-xl">
+                                <p className="text-xl font-bold uppercase text-yellow-400">Chương trình đã kết thúc</p>
+                                <p className="text-sm text-gray-300 mt-1">Hẹn gặp lại quý khách lần sau!</p>
+                            </div>
+                        )}
+                        
+                        <div className="mt-8 text-yellow-100/80 text-sm font-medium bg-red-950/30 px-4 py-2 rounded-full backdrop-blur-sm border border-yellow-900/30">🎉 Chúc mừng năm mới - Vạn sự như ý 🎉</div>
+                        <div className="mt-4 cursor-pointer opacity-50 hover:opacity-100 text-[10px] text-white underline" onClick={downloadList}>⬇ Tải danh sách khách hàng</div>
+                    </div>
+
+                    {showForm && <LeadForm onSubmit={handleFormSubmit} onCancel={() => setShowForm(false)} />}
+                    {result && <ResultModal prize={result} user={userInfo} spinCount={spinCount} maxSpins={MAX_SPINS} onContinue={()=>setResult(null)} onFinish={handleFinishSession} />}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
